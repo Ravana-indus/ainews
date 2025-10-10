@@ -8,7 +8,7 @@ import { clusterNewArticles } from './clustering';
 import { summarizeNewEvents } from './summarize';
 import { detectBiasForAllEvents } from './bias';
 import { classifyNewEvents } from './classify';
-import { dedupeRecentEvents } from './dedupe';
+import { dedupeRecentEvents, dedupeByVectorDetailed } from './dedupe';
 import { getServerSupabase } from '../supabaseServer';
 const supabase = getServerSupabase();
 
@@ -101,3 +101,8 @@ export async function logPipelineResults(results: PipelineResults): Promise<void
     console.log('\n🧹 Stage 6: Deduplicating events...');
     const dedupeRes = await dedupeRecentEvents(0.84, 200);
     console.log(`✅ Deduplication: merged ${dedupeRes.merged} out of ${dedupeRes.checked} checked`);
+
+    // Stage 7: Vector-based deduplication for stronger merging
+    console.log('\n🧭 Stage 7: Vector-based dedup...');
+    const vecRes = await dedupeByVectorDetailed(0.92, 200, false);
+    console.log(`✅ Vector dedup: merged ${vecRes.merged} out of ${vecRes.checked} checked`);

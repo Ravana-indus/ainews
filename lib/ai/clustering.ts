@@ -6,6 +6,7 @@
 import { getServerSupabase } from '../supabaseServer';
 const supabase = getServerSupabase();
 import { cosineSimilarity } from './embeddings';
+import { generateCanonicalTitleLLM } from './title';
 
 export interface ArticleWithEmbedding {
   id: string;
@@ -159,7 +160,9 @@ export function generateCanonicalTitle(cluster: Cluster): string {
  * Save a cluster as an event in the database
  */
 export async function saveClusterAsEvent(cluster: Cluster): Promise<string | null> {
-  const canonicalTitle = generateCanonicalTitle(cluster);
+  // Try LLM to create a neutral canonical title
+  const llmTitle = await generateCanonicalTitleLLM(cluster.articles.map(a => a.id)).catch(() => null);
+  const canonicalTitle = llmTitle || generateCanonicalTitle(cluster);
 
   // Create event
   const { data: event, error: eventError } = await supabase

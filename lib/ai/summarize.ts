@@ -5,6 +5,7 @@
 
 import { chatCompletion } from './azure';
 import { getServerSupabase } from '../supabaseServer';
+import { getPageText } from '../content';
 const supabase = getServerSupabase();
 
 export interface ArticleForSummary {
@@ -136,7 +137,7 @@ export async function summarizeEventInAllLanguages(
 
   const { data: articles, error: articlesError } = await supabase
     .from('articles')
-    .select('id, title, content_text, published_at, source_id')
+    .select('id, title, content_text, published_at, source_id, url')
     .in('id', articleIds);
 
   if (articlesError || !articles || articles.length === 0) {
@@ -153,10 +154,19 @@ export async function summarizeEventInAllLanguages(
 
   const sourceMap = new Map((sources || []).map((s: any) => [s.id, s.name]));
 
-  const articlesWithSources = articles.map((a: any) => ({
-    ...a,
-    source_name: sourceMap.get(a.source_id) || 'Unknown',
-  }));
+  const articlesWithSources = [] as any[];
+  for (const a of (articles || [])) {
+    let content = a.content_text || '';
+    if (!content || content.length < 200) {
+      const fetched = a.url ? await getPageText(a.url) : null;
+      if (fetched) content = fetched;
+    }
+    articlesWithSources.push({
+      ...a,
+      content_text: content,
+      source_name: sourceMap.get(a.source_id) || 'Unknown',
+    });
+  }
 
   try {
     // Generate English summary

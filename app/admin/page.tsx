@@ -12,6 +12,24 @@ export default function AdminDashboard() {
   return (
     <main className="mx-auto max-w-screen-sm p-4">
       <h1 className="text-lg font-semibold mb-3">Admin Dashboard</h1>
+      {/* Quick Shortcuts */}
+      <section className="mb-4">
+        <div className="font-medium mb-2">Quick Shortcuts</div>
+        <div className="flex gap-2 flex-wrap text-sm">
+          <a href="/admin/sync" className="px-3 py-2 border rounded-lg">Pipeline Sync</a>
+          <a href="/admin/ingest" className="px-3 py-2 border rounded-lg">News Ingestion</a>
+          <a href="/admin/sources" className="px-3 py-2 border rounded-lg">Sources</a>
+          <a href="/admin/events" className="px-3 py-2 border rounded-lg">Events</a>
+          <a href="/admin/articles" className="px-3 py-2 border rounded-lg">Articles</a>
+          <a href="/admin/logs" className="px-3 py-2 border rounded-lg">Logs</a>
+          <a href="/admin/qa" className="px-3 py-2 border rounded-lg">QA Checks</a>
+          <a href="/admin/settings" className="px-3 py-2 border rounded-lg">Site Settings</a>
+          <a href="/admin/ads" className="px-3 py-2 border rounded-lg">Ad Slots</a>
+          <a href="/admin/ai" className="px-3 py-2 border rounded-lg">AI Endpoints</a>
+          <a href="/admin/translations" className="px-3 py-2 border rounded-lg">Translations</a>
+          <a href="/admin/dashboard" className="px-3 py-2 border rounded-lg">Dashboard</a>
+        </div>
+      </section>
       <div className="grid grid-cols-2 gap-3">
         <div className="border rounded-xl p-3 text-sm">Articles (24h): {kpi.articles24h}</div>
         <div className="border rounded-xl p-3 text-sm">Events: {kpi.eventsCreated}</div>
