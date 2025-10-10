@@ -112,69 +112,12 @@ export async function POST(req: Request) {
     logs.push(`Article created with ID: ${articleId}`);
   }
 
-  // Create event
-  const { data: evt, error: evtErr } = await supabase
-    .from('events')
-    .insert({
-      canonical_title: article.title,
-      category: 'General',
-      last_updated_at: new Date().toISOString(),
-      importance_score: 60,
-    })
-    .select('id, canonical_title')
-    .single();
-
-  if (evtErr || !evt) {
-    errors.push(`Failed to create event: ${evtErr?.message || 'unknown'}`);
-    return NextResponse.json({ ok: false, errors, logs });
-  }
-
-  logs.push(`Event created: ${evt.id}`);
-
-  // Create summary
-  const summary = article.content.substring(0, 500) + (article.content.length > 500 ? '...' : '');
-  await supabase
-    .from('summaries')
-    .insert({
-      event_id: evt.id,
-      lang: 'en',
-      neutral_summary: summary,
-      neutral_detail: article.content,
-      confidence: 70,
-    });
-
-  // Create coverage
-  await supabase
-    .from('event_source_coverage')
-    .insert({
-      event_id: evt.id,
-      source_id: sourceId,
-      headline: article.title,
-      lean: 0,
-      reason: 'Scraped from web',
-      url: article.url,
-      published_at: article.publishedAt,
-    });
-
-  // Create event-article relationship
-  if (articleId) {
-    await supabase
-      .from('event_articles')
-      .insert({
-        event_id: evt.id,
-        article_id: articleId,
-        similarity: 1.0,
-        stance_score: 0,
-        lean_reason: 'Directly scraped',
-      });
-  }
-
-  logs.push('Event fully created with all relationships');
+  // Do NOT create an event here. The pipeline will cluster articles into events.
+  logs.push('Article stored; queued for clustering by pipeline');
 
   return NextResponse.json({
     ok: true,
-    event: { id: evt.id, title: evt.canonical_title },
-    article: { title: article.title, contentLength: article.content.length },
+    article: { id: articleId, title: article.title, contentLength: article.content.length },
     logs,
     errors,
   });

@@ -14,7 +14,8 @@ export function isAdminRequest(req: Request): boolean {
   if (!token) return false;
   const hdr = req.headers.get('x-admin-token');
   if (hdr && hdr === token) return true;
+  const auth = req.headers.get('authorization');
+  if (auth && auth.replace('Bearer ', '') === token) return true;
   const cookies = parseCookies(req.headers.get('cookie'));
   return cookies['admin_token'] === token;
 }
-

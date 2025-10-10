@@ -280,56 +280,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const { data: evt, error: evtErr } = await supabase
-      .from('events')
-      .insert({ canonical_title: a.title, category: 'General', last_updated_at: new Date().toISOString(), importance_score: 50 })
-      .select('id, canonical_title')
-      .single();
-    if (evtErr || !evt) { errors.push(`create event failed: ${evtErr?.message || 'unknown'}`); logs.push('event insert failed'); continue; }
-    await supabase
-      .from('summaries')
-      .insert({ event_id: evt.id, lang: 'en', neutral_summary: `Auto-seeded summary for: ${a.title}`, neutral_detail: '', confidence: 50 });
-    const coverageSourceId = a.source_id || (domainFromUrl(a.url || '') ? srcMap[domainFromUrl(a.url || '') as string] : null);
-    const { error: covErr } = await supabase
-      .from('event_source_coverage')
-      .insert({ event_id: evt.id, source_id: coverageSourceId, headline: a.title, lean: 0, reason: 'Auto import', url: a.url, published_at: a.published_at });
-    if (covErr) { errors.push(`create coverage failed: ${covErr.message}`); logs.push('coverage insert failed'); }
-
-    // Create event_articles relationship if article was created
-    if (articleId) {
-      const { error: eaErr } = await supabase
-        .from('event_articles')
-        .insert({ event_id: evt.id, article_id: articleId, similarity: 0.9, stance_score: 0, lean_reason: 'Auto seeded' });
-      if (eaErr) { errors.push(`create event_articles failed: ${eaErr.message}`); logs.push('event_articles insert failed'); }
-      else { logs.push('event_articles created'); }
-    }
-    // Try Azure summarization using page text
-    const pageText = a.url ? await fetchPageText(a.url) : null;
-    const aiSummary = pageText ? await azureSummarize(pageText) : await azureSummarize(a.title);
-    if (aiSummary) {
-      logs.push('ai summary ok');
-      await supabase
-        .from('summaries')
-        .update({ neutral_summary: aiSummary })
-        .eq('event_id', evt.id)
-        .eq('lang', 'en');
-      // Localize to Sinhala and Tamil
-      const si = await azureTranslate(aiSummary, 'si');
-      if (si) {
-        logs.push('ai si ok');
-        await supabase
-          .from('summaries')
-          .upsert({ event_id: evt.id, lang: 'si', neutral_summary: si, neutral_detail: '', confidence: 50 });
-      }
-      const ta = await azureTranslate(aiSummary, 'ta');
-      if (ta) {
-        logs.push('ai ta ok');
-        await supabase
-          .from('summaries')
-          .upsert({ event_id: evt.id, lang: 'ta', neutral_summary: ta, neutral_detail: '', confidence: 50 });
-      }
-    }
-    created.push({ id: evt.id, title: evt.canonical_title });
+    // Do not create event here; pipeline will cluster multiple articles into a single event
+    created.push({ id: articleId || a.id, title: a.title, url: a.url });
   }
   if (!attempted) {
     logs.push('No articles and RSS likely blocked by environment.');

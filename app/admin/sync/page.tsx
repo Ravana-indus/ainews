@@ -470,10 +470,10 @@ ${details.length ? ` • Ingestion — per-source:\n${detailLines}` : ''}
             onClick={async () => {
               // Manual: deduplicate recent events
               try {
-                const res = await fetch('/api/admin/dedupe', { method: 'POST', headers: { 'x-admin-token': adminToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ threshold: 0.84, limit: 300, dryRun: false }) });
+                const res = await fetch('/api/admin/dedupe/full', { method: 'POST', headers: { 'x-admin-token': adminToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ threshold: 0.84, limit: 1000, maxIterations: 10, dryRun: false }) });
                 const js = await res.json();
                 const lines = (js.details || []).slice(0, 10).map((d: any) => `   - keep: ${d.keepTitle} / drop: ${d.dropTitle} (sim ${d.similarity})`).join('\n');
-                setSyncStatus(`✅ Deduped ${js.merged} of ${js.checked} checked\n${lines}`);
+                setSyncStatus(`✅ Deduped ${js.merged} duplicates\n${lines}`);
               } catch { setSyncStatus('Failed to deduplicate'); }
             }}
           >
