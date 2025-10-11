@@ -38,7 +38,7 @@ async function testPipeline() {
         { role: 'system', content: 'You are a helpful assistant.' },
         { role: 'user', content: 'Summarize this in 10 words: Sri Lanka announced new education funding for schools.' }
       ],
-      max_tokens: 100
+      max_completion_tokens: 100
     });
     console.log('✅ Chat completion:', testResponse.substring(0, 100) + '...');
 

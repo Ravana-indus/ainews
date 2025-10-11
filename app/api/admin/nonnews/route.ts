@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const ids: string[] = Array.isArray(body?.ids) ? body.ids : [];
   const minSources: number = Math.max(0, Number(body?.minSources ?? 2));
-  const requireSummary: boolean = !!body?.requireSummary ?? true;
+  const requireSummary: boolean = body?.requireSummary !== undefined ? !!body.requireSummary : true;
   const limit: number = Math.max(10, Math.min(1000, Number(body?.limit ?? 500)));
 
   let toFlag: string[] = [];

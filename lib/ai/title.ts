@@ -16,8 +16,8 @@ export async function generateCanonicalTitleLLM(articleIds: string[]): Promise<s
         { role: 'system', content: 'You write neutral, factual canonical titles for combined news events.' },
         { role: 'user', content: prompt },
       ],
-      temperature: 0.1,
-      max_tokens: 60,
+      // Note: gpt-5-mini only supports temperature=1 (default)
+      max_completion_tokens: 60,
     });
     const title = response.trim().replace(/^"|"$/g, '');
     return title || null;

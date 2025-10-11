@@ -17,12 +17,12 @@ const parser = new Parser({
   },
 });
 
-export async function fetchRssItems(feedUrl: string, limit: number = 3): Promise<RssItem[]> {
+export async function fetchRssItems(feedUrl: string, limit: number = 10): Promise<RssItem[]> {
   const result = await fetchRssItemsWithDiagnostics(feedUrl, limit);
   return result.items;
 }
 
-export async function fetchRssItemsWithDiagnostics(feedUrl: string, limit: number = 3): Promise<RssDiagnostics> {
+export async function fetchRssItemsWithDiagnostics(feedUrl: string, limit: number = 10): Promise<RssDiagnostics> {
   const logs: string[] = [];
   const errors: string[] = [];
 

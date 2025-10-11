@@ -18,7 +18,7 @@ export interface ChatMessage {
 export interface ChatCompletionRequest {
   messages: ChatMessage[];
   temperature?: number;
-  max_tokens?: number;
+  max_completion_tokens?: number;
   top_p?: number;
 }
 
@@ -67,12 +67,20 @@ export async function chatCompletion(
   // Build the full endpoint URL
   const url = `${azureConfig.endpoint}/openai/deployments/${azureConfig.modelName}/chat/completions?api-version=${azureConfig.apiVersion}`;
 
-  const body = {
+  // Note: gpt-5-mini only supports max_completion_tokens
+  // It does NOT support: temperature, top_p, frequency_penalty, presence_penalty
+  const body: any = {
     messages: request.messages,
-    temperature: request.temperature ?? 0.3,
-    max_tokens: request.max_tokens ?? 2000,
-    top_p: request.top_p ?? 0.95,
+    max_completion_tokens: request.max_completion_tokens ?? 2000,
   };
+
+  // Only include optional parameters if explicitly requested (for models that support them)
+  if (request.temperature !== undefined) {
+    body.temperature = request.temperature;
+  }
+  if (request.top_p !== undefined) {
+    body.top_p = request.top_p;
+  }
 
   try {
     const response = await fetch(url, {
@@ -108,9 +116,11 @@ export async function chatCompletion(
 export async function getEmbedding(text: string, config?: Partial<AzureConfig>): Promise<number[]> {
   const azureConfig = { ...getAzureConfig(), ...config };
 
-  // Use text-embedding-ada-002 model for embeddings
-  const embeddingModel = process.env.AZURE_EMBED_MODEL || process.env.AZURE_EMBED_DEPLOYMENT || 'text-embedding-ada-002';
-  const url = `${azureConfig.endpoint}/openai/deployments/${embeddingModel}/embeddings?api-version=${azureConfig.apiVersion}`;
+  // Use configured embedding model (text-embedding-3-small fits Supabase 2000-dim limit)
+  const embeddingModel = process.env.AZURE_EMBED_MODEL || process.env.AZURE_EMBED_DEPLOYMENT || 'text-embedding-3-small';
+  // Embeddings use a different API version (2023-05-15) than chat completions
+  const embedApiVersion = process.env.AZURE_EMBED_API_VERSION || '2023-05-15';
+  const url = `${azureConfig.endpoint}/openai/deployments/${embeddingModel}/embeddings?api-version=${embedApiVersion}`;
 
   try {
     const response = await fetch(url, {

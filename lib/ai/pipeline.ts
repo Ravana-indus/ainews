@@ -17,6 +17,9 @@ export interface PipelineResults {
   clustering: { articlesProcessed: number; clustersCreated: number; eventsCreated: number };
   summarization: { eventsProcessed: number; summariesCreated: number; failed: number };
   bias: { eventsProcessed: number; articlesAnalyzed: number; failed: number };
+  classification?: { eventsProcessed: number; categoriesAssigned: number; nonNewsFlagged: number };
+  dedupTitle?: { merged: number; checked: number };
+  dedupVector?: { merged: number; checked: number };
   duration: number;
 }
 
@@ -56,6 +59,24 @@ export async function runCompletePipeline(): Promise<PipelineResults> {
     results.bias = await detectBiasForAllEvents();
     console.log(`✅ Bias detection: ${results.bias.articlesAnalyzed} articles analyzed`);
 
+    // Stage 5: Classify categories and newsworthiness
+    console.log('\n🗂️ Stage 5: Classifying events...');
+    const classRes = await classifyNewEvents();
+    results.classification = classRes;
+    console.log(`✅ Classification: ${classRes.categoriesAssigned} categories; ${classRes.nonNewsFlagged} flagged non-news`);
+
+    // Stage 6: Deduplicate recent events
+    console.log('\n🧹 Stage 6: Deduplicating events...');
+    const dedupeRes = await dedupeRecentEvents(0.84, 200);
+    results.dedupTitle = dedupeRes;
+    console.log(`✅ Deduplication: merged ${dedupeRes.merged} out of ${dedupeRes.checked} checked`);
+
+    // Stage 7: Vector-based deduplication for stronger merging
+    console.log('\n🧭 Stage 7: Vector-based dedup...');
+    const vecRes = await dedupeByVectorDetailed(0.92, 200, false);
+    results.dedupVector = { merged: vecRes.merged, checked: vecRes.checked };
+    console.log(`✅ Vector dedup: merged ${vecRes.merged} out of ${vecRes.checked} checked`);
+
     results.duration = Date.now() - startTime;
     console.log(`\n🎉 Pipeline completed in ${(results.duration / 1000).toFixed(2)} seconds`);
 
@@ -92,17 +113,3 @@ export async function logPipelineResults(results: PipelineResults): Promise<void
     console.error('Failed to log pipeline results');
   }
 }
-    // Stage 5: Classify categories and newsworthiness
-    console.log('\n🗂️ Stage 5: Classifying events...');
-    const classRes = await classifyNewEvents();
-    console.log(`✅ Classification: ${classRes.categoriesAssigned} categories; ${classRes.nonNewsFlagged} flagged non-news`);
-
-    // Stage 6: Deduplicate recent events
-    console.log('\n🧹 Stage 6: Deduplicating events...');
-    const dedupeRes = await dedupeRecentEvents(0.84, 200);
-    console.log(`✅ Deduplication: merged ${dedupeRes.merged} out of ${dedupeRes.checked} checked`);
-
-    // Stage 7: Vector-based deduplication for stronger merging
-    console.log('\n🧭 Stage 7: Vector-based dedup...');
-    const vecRes = await dedupeByVectorDetailed(0.92, 200, false);
-    console.log(`✅ Vector dedup: merged ${vecRes.merged} out of ${vecRes.checked} checked`);

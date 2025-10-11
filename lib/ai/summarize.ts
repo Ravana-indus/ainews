@@ -73,8 +73,8 @@ DETAILED:
         { role: 'system', content: 'You are a neutral news analyst for Sri Lankan media.' },
         { role: 'user', content: prompt },
       ],
-      temperature: 0.3,
-      max_tokens: 2000,
+      // Note: gpt-5-mini only supports temperature=1 (default)
+      max_completion_tokens: 2000,
     });
 
     // Parse response
@@ -223,8 +223,8 @@ DETAILED:
         { role: 'system', content: `You are a professional ${langName} translator for Sri Lankan news.` },
         { role: 'user', content: prompt },
       ],
-      temperature: 0.2,
-      max_tokens: 2500,
+      // Note: gpt-5-mini only supports temperature=1 (default)
+      max_completion_tokens: 2500,
     });
 
     // Parse response

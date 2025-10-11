@@ -185,7 +185,7 @@ export async function fetchKPI(): Promise<{ articles24h: number; eventsCreated: 
   };
 }
 
-export async function fetchLatestArticles(limit: number = 3): Promise<{ title: string; url: string; publishedAt: string; sourceId: string; sourceName?: string; sourceLogo?: string | null; }[]> {
+export async function fetchLatestArticles(limit: number = 10): Promise<{ title: string; url: string; publishedAt: string; sourceId: string; sourceName?: string; sourceLogo?: string | null; }[]> {
   const { data: arts, error: artErr } = await supabase
     .from('articles')
     .select('id, source_id, title, url, published_at')

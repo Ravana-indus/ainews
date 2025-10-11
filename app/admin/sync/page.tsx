@@ -13,7 +13,7 @@ export default function AdminSync() {
   const [statusLoading, setStatusLoading] = React.useState(true);
   const [sources, setSources] = React.useState<any[]>([]);
   const [sourcesLoading, setSourcesLoading] = React.useState(true);
-  const [perSourceAmount, setPerSourceAmount] = React.useState<number>(3);
+  const [perSourceAmount, setPerSourceAmount] = React.useState<number>(10);
   const [fetchingSourceId, setFetchingSourceId] = React.useState<string | null>(null);
   const [fetchResult, setFetchResult] = React.useState<string>('');
   const [verifyLoading, setVerifyLoading] = React.useState(false);
@@ -47,15 +47,18 @@ export default function AdminSync() {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${tokenOverride ?? adminToken}`,
+          'x-admin-token': tokenOverride ?? adminToken,
           'Content-Type': 'application/json',
         },
       });
 
-      if (response.ok) {
+      const ct = response.headers.get('content-type') || '';
+      if (response.ok && ct.includes('application/json')) {
         const data = await response.json();
         setPipelineStatus(data);
       } else {
-        setSyncStatus('Failed to fetch pipeline status');
+        const text = await response.text();
+        setSyncStatus(`Failed status fetch (${response.status}): ${text.slice(0, 200)}`);
       }
     } catch (error) {
       console.error('Failed to fetch pipeline status:', error);
@@ -79,12 +82,14 @@ export default function AdminSync() {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${adminToken}`,
+          'x-admin-token': adminToken,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ amount: perSourceAmount })
       });
 
-      const data = await response.json();
+      const ct = response.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await response.json() : { success: false, error: `HTTP ${response.status}` };
 
       if (data.success) {
         const details: Array<{ sourceId: string; sourceName: string; created: number; errors: string[] }> = data.summary?.ingestion?.details || [];
@@ -100,6 +105,10 @@ ${details.length ? ` • Ingestion — per-source:\n${detailLines}` : ''}
 • Events created: ${data.summary.eventsCreated}
 • Summaries generated: ${data.summary.summariesGenerated}
 • Articles analyzed for bias: ${data.summary.biasAnalyzed}
+• Categories assigned: ${data.summary.classified}
+• Non-news flagged: ${data.summary.nonNewsFlagged}
+• Dedup (title) merged: ${data.summary.dedupMergedTitle}
+• Dedup (vector) merged: ${data.summary.dedupMergedVector}
 • Duration: ${data.summary.duration}
 • Completed: ${data.timestamp}`);
 
@@ -205,7 +214,7 @@ ${details.length ? ` • Ingestion — per-source:\n${detailLines}` : ''}
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold">Pipeline Status</h2>
           <button
-            onClick={fetchPipelineStatus}
+            onClick={() => fetchPipelineStatus()}
             className="px-3 py-1 border rounded-lg text-sm hover:bg-slate-50"
             disabled={statusLoading}
           >
@@ -244,7 +253,7 @@ ${details.length ? ` • Ingestion — per-source:\n${detailLines}` : ''}
               <div>
                 <div className="font-medium mb-1">Recent Runs:</div>
                 <div className="space-y-1 text-xs">
-                  {pipelineStatus.recentRuns.slice(0, 3).map((run: any, i: number) => (
+                  {pipelineStatus.recentRuns.slice(0, 10).map((run: any, i: number) => (
                     <div key={i} className="flex justify-between items-center">
                       <span className={`px-2 py-1 rounded text-xs ${
                         run.status === 'completed' ? 'bg-green-100 text-green-700' :

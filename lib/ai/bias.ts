@@ -61,8 +61,8 @@ Output ONLY valid JSON:
         },
         { role: 'user', content: prompt },
       ],
-      temperature: 0.2,
-      max_tokens: 300,
+      // Note: gpt-5-mini only supports temperature=1 (default)
+      max_completion_tokens: 300,
     });
 
     // Parse JSON response

@@ -7,6 +7,8 @@ import { getServerSupabase } from '../supabaseServer';
 const supabase = getServerSupabase();
 import { cosineSimilarity } from './embeddings';
 import { generateCanonicalTitleLLM } from './title';
+import { summarizeEventInAllLanguages, saveSummaries } from './summarize';
+import { detectBiasForEvent } from './bias';
 
 export interface ArticleWithEmbedding {
   id: string;
@@ -58,7 +60,7 @@ export async function fetchUnclusteredArticles(): Promise<ArticleWithEmbedding[]
  */
 export function clusterArticles(
   articles: ArticleWithEmbedding[],
-  threshold: number = 0.82
+  threshold: number = 0.88  // Increased from 0.82 to prevent unrelated articles from clustering
 ): Cluster[] {
   if (articles.length === 0) return [];
 
@@ -184,7 +186,17 @@ export async function saveClusterAsEvent(cluster: Cluster): Promise<string | nul
   }
 
   // Create source coverage (per source/outlet) and link articles to event
-  const coverages = cluster.articles.map(article => ({
+  // IMPORTANT: Deduplicate by source_id to avoid constraint violations
+  // (one coverage entry per source per event)
+  const articlesBySource = new Map<string, ArticleWithEmbedding>();
+  for (const article of cluster.articles) {
+    const existing = articlesBySource.get(article.source_id);
+    if (!existing || new Date(article.published_at) > new Date(existing.published_at)) {
+      articlesBySource.set(article.source_id, article);
+    }
+  }
+
+  const coverages = Array.from(articlesBySource.values()).map(article => ({
     event_id: event.id,
     source_id: article.source_id, // outlet/source UUID, not article ID
     headline: article.title,
@@ -194,13 +206,18 @@ export async function saveClusterAsEvent(cluster: Cluster): Promise<string | nul
     reason: '', // Will be filled by bias detection
   }));
 
+  // Use upsert to handle duplicate (event_id, source_id) pairs
   const { error: coverageError } = await supabase
     .from('event_source_coverage')
-    .insert(coverages);
+    .upsert(coverages, {
+      onConflict: 'event_id,source_id',
+      ignoreDuplicates: false
+    });
 
   if (coverageError) {
     console.error('Failed to create event coverage:', coverageError);
-    return null;
+    // Don't fail the whole event creation, just log and continue
+    console.warn('Continuing despite coverage error...');
   }
 
   // Link each article to the event
@@ -219,6 +236,19 @@ export async function saveClusterAsEvent(cluster: Cluster): Promise<string | nul
   if (eventArticlesError) {
     console.error('Failed to link articles to event:', eventArticlesError);
     // Do not fail the whole event; continue
+  }
+
+  // Create/update summaries and bias for the new event
+  try {
+    const sums = await summarizeEventInAllLanguages(event.id);
+    if (sums) await saveSummaries(event.id, sums);
+  } catch (e) {
+    console.error('Summarization failed for event', event.id, e);
+  }
+  try {
+    await detectBiasForEvent(event.id);
+  } catch (e) {
+    console.error('Bias detection failed for event', event.id, e);
   }
 
   return event.id;

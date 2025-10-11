@@ -35,8 +35,8 @@ Return JSON: { "category": "one of ${CATEGORIES.join('|')}", "is_news": true|fal
         { role: 'system', content: 'You are a strict news classifier for Sri Lankan media.' },
         { role: 'user', content: prompt },
       ],
-      temperature: 0,
-      max_tokens: 200,
+      // Note: gpt-5-mini only supports temperature=1 (default)
+      max_completion_tokens: 200,
     });
     const m = response.match(/\{[\s\S]*\}/);
     if (!m) return null;

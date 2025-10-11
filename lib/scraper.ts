@@ -153,7 +153,7 @@ export type LinkDiagnostics = { items: LinkItem[]; logs: string[]; errors: strin
  * Fetch latest article links from a domain homepage or /news path
  * Heuristics-based; used when RSS is unavailable.
  */
-export async function fetchLatestLinksFromDomain(domain: string, limit: number = 3): Promise<LinkDiagnostics> {
+export async function fetchLatestLinksFromDomain(domain: string, limit: number = 10): Promise<LinkDiagnostics> {
   const logs: string[] = [];
   const errors: string[] = [];
   const items: LinkItem[] = [];

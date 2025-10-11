@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { runCompletePipeline, logPipelineResults } from '@/lib/ai/pipeline';
-import { getServerSupabase } from '@/lib/supabaseServer';
+// Defer heavy imports to inside handlers to avoid module-level errors causing 500 HTML responses
+import { isAdminRequest } from '@/lib/auth';
 
 /**
  * Manual AI Pipeline Sync Endpoint
@@ -9,16 +9,12 @@ import { getServerSupabase } from '@/lib/supabaseServer';
  */
 export async function POST(req: Request) {
   try {
+    const { getServerSupabase } = await import('@/lib/supabaseServer');
     const supabase = getServerSupabase();
     console.log('🔄 Manual pipeline sync triggered...');
 
-    // Admin auth: allow Bearer token or x-admin-token/cookie
-    const authHeader = req.headers.get('authorization');
-    const bearerToken = authHeader?.replace('Bearer ', '') || '';
-    const xAdminToken = req.headers.get('x-admin-token') || '';
-    const cookieToken = (req.headers.get('cookie') || '').includes(`admin_token=${process.env.ADMIN_TOKEN}`);
-    const ok = (bearerToken && bearerToken === process.env.ADMIN_TOKEN) || (xAdminToken && xAdminToken === process.env.ADMIN_TOKEN) || cookieToken;
-    if (!ok) {
+    // Unified admin auth
+    if (!isAdminRequest(req)) {
       return NextResponse.json({ error: 'Unauthorized - Invalid admin token' }, { status: 401 });
     }
 
@@ -69,7 +65,13 @@ export async function POST(req: Request) {
           headers: { 'Content-Type': 'application/json', 'x-admin-token': process.env.ADMIN_TOKEN || '' },
           body: JSON.stringify({ amount: amountPerSource, sourceId: s.id })
         });
-        const json = await res.json();
+        if (!res.ok) {
+          ingestErrors++;
+          ingestDetails.push({ sourceId: s.id, sourceName: s.name, created: 0, errors: [`HTTP ${res.status}`] });
+          continue;
+        }
+        const ct = res.headers.get('content-type') || '';
+        const json = ct.includes('application/json') ? await res.json() : { created: [], errors: [`invalid content-type: ${ct}`] };
         const createdCount = (json.created || []).length || 0;
         const errorsArr = (json.errors || []) as string[];
         ingestCreated += createdCount;
@@ -83,16 +85,23 @@ export async function POST(req: Request) {
       await new Promise(r => setTimeout(r, 200));
     }
 
-    // Run complete pipeline
-    const results = await runCompletePipeline();
-
-    // Log results
-    await logPipelineResults(results);
+    // Run complete pipeline (tolerant to failures)
+    let results: any = null;
+    let pipelineError: string | null = null;
+    try {
+      const { runCompletePipeline, logPipelineResults } = await import('@/lib/ai/pipeline');
+      results = await runCompletePipeline();
+      await logPipelineResults(results);
+    } catch (e) {
+      pipelineError = e instanceof Error ? e.message : String(e);
+      console.error('Pipeline error (continuing response):', pipelineError);
+    }
 
     return NextResponse.json({
-      success: true,
-      message: 'Pipeline sync completed successfully',
-      results,
+      success: !pipelineError,
+      message: pipelineError ? 'Pipeline encountered errors' : 'Pipeline sync completed successfully',
+      error: pipelineError || undefined,
+      results: results || undefined,
       timestamp: new Date().toISOString(),
       summary: {
         ingestion: {
@@ -102,11 +111,15 @@ export async function POST(req: Request) {
           amountPerSource,
           details: ingestDetails,
         },
-        articlesEmbedded: results.embeddings.processed,
-        eventsCreated: results.clustering.eventsCreated,
-        summariesGenerated: results.summarization.summariesCreated,
-        biasAnalyzed: results.bias.articlesAnalyzed,
-        duration: `${(results.duration / 1000).toFixed(2)}s`
+        articlesEmbedded: results?.embeddings?.processed ?? 0,
+        eventsCreated: results?.clustering?.eventsCreated ?? 0,
+        summariesGenerated: results?.summarization?.summariesCreated ?? 0,
+        biasAnalyzed: results?.bias?.articlesAnalyzed ?? 0,
+        classified: results?.classification?.categoriesAssigned ?? 0,
+        nonNewsFlagged: results?.classification?.nonNewsFlagged ?? 0,
+        dedupMergedTitle: results?.dedupTitle?.merged ?? 0,
+        dedupMergedVector: results?.dedupVector?.merged ?? 0,
+        duration: results ? `${(results.duration / 1000).toFixed(2)}s` : 'N/A'
       }
     });
 
@@ -127,49 +140,57 @@ export async function POST(req: Request) {
  */
 export async function GET(req: Request) {
   try {
+    const { getServerSupabase } = await import('@/lib/supabaseServer');
     const supabase = getServerSupabase();
-    const authHeader = req.headers.get('authorization');
-    const bearerToken = authHeader?.replace('Bearer ', '') || '';
-    const xAdminToken = req.headers.get('x-admin-token') || '';
-    const cookieToken = (req.headers.get('cookie') || '').includes(`admin_token=${process.env.ADMIN_TOKEN}`);
-    const ok = (bearerToken && bearerToken === process.env.ADMIN_TOKEN) || (xAdminToken && xAdminToken === process.env.ADMIN_TOKEN) || cookieToken;
-    if (!ok) {
+    if (!isAdminRequest(req)) {
       return NextResponse.json({ error: 'Unauthorized - Invalid admin token' }, { status: 401 });
     }
 
     // Get latest pipeline runs
-    const { data: recentRuns } = await supabase
-      .from('pipeline_runs')
-      .select('*')
-      .order('started_at', { ascending: false })
-      .limit(5);
+    let recentRuns: any[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('pipeline_runs')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(5);
+      recentRuns = error ? [] : (data || []);
+    } catch { recentRuns = []; }
 
     // Get current running status
-    const { data: runningPipeline } = await supabase
-      .from('pipeline_runs')
-      .select('*')
-      .eq('status', 'running')
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    let runningPipeline: any = null;
+    try {
+      const { data, error } = await supabase
+        .from('pipeline_runs')
+        .select('*')
+        .eq('status', 'running')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      runningPipeline = error ? null : data;
+    } catch { runningPipeline = null; }
 
     // Get pipeline stats
-    const { data: stats } = await supabase
-      .from('pipeline_runs')
-      .select('status, duration_ms, embeddings_processed, events_created, summaries_generated, bias_analyzed')
-      .order('started_at', { ascending: false })
-      .limit(100);
+    let stats: any[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('pipeline_runs')
+        .select('status, duration_ms, embeddings_processed, events_created, summaries_generated, bias_analyzed')
+        .order('started_at', { ascending: false })
+        .limit(100);
+      stats = error ? [] : (data || []);
+    } catch { stats = []; }
 
     const summaryStats = {
-      totalRuns: stats?.length || 0,
-      successfulRuns: stats?.filter(r => r.status === 'completed').length || 0,
-      failedRuns: stats?.filter(r => r.status === 'failed').length || 0,
-      avgDuration: stats && stats.length > 0
-        ? (stats.reduce((sum, r) => sum + (r.duration_ms || 0), 0) / stats.length / 1000).toFixed(1) + 's'
+      totalRuns: stats.length || 0,
+      successfulRuns: stats.filter((r: any) => r.status === 'completed').length || 0,
+      failedRuns: stats.filter((r: any) => r.status === 'failed').length || 0,
+      avgDuration: stats.length > 0
+        ? (stats.reduce((sum: number, r: any) => sum + (r.duration_ms || 0), 0) / stats.length / 1000).toFixed(1) + 's'
         : 'N/A',
-      totalArticlesEmbedded: stats?.reduce((sum, r) => sum + (r.embeddings_processed || 0), 0) || 0,
-      totalEventsCreated: stats?.reduce((sum, r) => sum + (r.events_created || 0), 0) || 0,
-      totalSummariesGenerated: stats?.reduce((sum, r) => sum + (r.summaries_generated || 0), 0) || 0,
+      totalArticlesEmbedded: stats.reduce((sum: number, r: any) => sum + (r.embeddings_processed || 0), 0) || 0,
+      totalEventsCreated: stats.reduce((sum: number, r: any) => sum + (r.events_created || 0), 0) || 0,
+      totalSummariesGenerated: stats.reduce((sum: number, r: any) => sum + (r.summaries_generated || 0), 0) || 0,
     };
 
     return NextResponse.json({
