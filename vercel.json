@@ -1,8 +1,4 @@
 {
-  "crons": [
-    {
-      "path": "/api/tasks/run-every-30min",
-      "schedule": "*/30 * * * *"
-    }
-  ]
+  "buildCommand": "npm run build",
+  "framework": "nextjs"
 }
