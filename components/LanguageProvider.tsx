@@ -1,5 +1,6 @@
 'use client';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState, useEffect } from 'react';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 
 type Lang = 'en' | 'si' | 'ta';
 
@@ -10,29 +11,34 @@ type Ctx = {
 
 const LanguageContext = createContext<Ctx | undefined>(undefined);
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Lang>('en');
+export function LanguageProvider({
+  children,
+  initialLang,
+}: {
+  children: React.ReactNode;
+  initialLang: Lang;
+}) {
+  const [lang, setLangState] = useState<Lang>(initialLang);
+  const router = useRouter();
+  const pathname = usePathname();
+
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const deepLink = params.get('lang');
-      const stored = localStorage.getItem('langPreference');
-      if (stored === 'en' || stored === 'si' || stored === 'ta') {
-        setLangState(stored);
-      } else if (deepLink === 'en' || deepLink === 'si' || deepLink === 'ta') {
-        setLangState(deepLink as Lang);
-      }
-    } catch {}
-  }, []);
+    if (initialLang && initialLang !== lang) {
+      setLangState(initialLang);
+    }
+  }, [initialLang, lang]);
+
   const setLang = (l: Lang) => {
     setLangState(l);
-    try {
-      localStorage.setItem('langPreference', l);
-      document.cookie = `lang=${l}; path=/`;
-      document.documentElement.lang = l;
-    } catch {}
+    document.cookie = `lang=${l}; path=/; max-age=31536000; SameSite=Lax`;
+    document.documentElement.lang = l;
+
+    // Replace the language part of the URL and push the new path
+    const newPath = pathname.replace(/^\/(en|si|ta)/, `/${l}`);
+    router.push(newPath);
   };
-  const value = useMemo(() => ({ lang, setLang }), [lang]);
+
+  const value = useMemo(() => ({ lang, setLang }), [lang, setLang]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 

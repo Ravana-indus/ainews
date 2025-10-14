@@ -12,10 +12,9 @@ import { Fragment } from 'react';
 import { t } from '../lib/messages';
 
 export const revalidate = 3600;
-export default async function HomePage({ searchParams }: { searchParams?: Record<string, string> }) {
+export default async function HomePage({ params, searchParams }: { params: { lang: 'en' | 'si' | 'ta' }, searchParams?: Record<string, string> }) {
+  const { lang } = params;
   const cookieStore = cookies();
-  const langCookie = cookieStore.get('lang')?.value as 'en' | 'si' | 'ta' | undefined;
-  const lang = langCookie && (langCookie === 'en' || langCookie === 'si' || langCookie === 'ta') ? langCookie : 'en';
   const cookieHeader = cookieStore.getAll().map((c) => `${c.name}=${c.value}`).join('; ');
   const adSettings = getAdSettingsFromCookieHeader(cookieHeader);
   const selectedCategory = searchParams?.category || undefined;
@@ -47,7 +46,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Record
       <div aria-label="Latest events">
         {items.map((evt, idx) => (
           <Fragment key={evt.id}>
-            <div className="mb-4"><EventCard evt={evt} lang={lang} /></div>
+            <div className="mb-4"><EventCard evt={evt} /></div>
             {adSettings.enabled && adSettings.feedFrequency > 0 && (idx + 1) % adSettings.feedFrequency === 0 && (
               <div className="my-6"><AdsPlaceholder position="inline" /></div>
             )}
@@ -64,10 +63,10 @@ export default async function HomePage({ searchParams }: { searchParams?: Record
         <div className="text-sm font-semibold mb-2">{t('exploreTopics', lang)}</div>
         <div className="flex gap-2 flex-wrap">
           {['Politics','Economy','Health','Education','Security','Environment','Transport','Technology','Sports','Local','International'].map((c) => (
-            <a key={c} href={`/?category=${encodeURIComponent(c)}`} className={`px-2 py-1 text-xs rounded-full ${selectedCategory === c ? 'bg-blue-600 text-white' : 'bg-slate-100'}`}>{c}</a>
+            <a key={c} href={`/${lang}/?category=${encodeURIComponent(c)}`} className={`px-2 py-1 text-xs rounded-full ${selectedCategory === c ? 'bg-blue-600 text-white' : 'bg-slate-100'}`}>{c}</a>
           ))}
           {selectedCategory && (
-            <a href="/" className="px-2 py-1 text-xs bg-slate-100 rounded-full">Clear</a>
+            <a href={`/${lang}`} className="px-2 py-1 text-xs bg-slate-100 rounded-full">Clear</a>
           )}
         </div>
       </section>
