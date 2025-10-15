@@ -72,6 +72,7 @@ export default async function EventPage({ params, searchParams }: { params: { id
               url={s.url}
               sourceName={s.sourceName}
               logoUrl={s.sourceLogo}
+              publishedAt={s.publishedAt}
             />
           ))}
         </ul>

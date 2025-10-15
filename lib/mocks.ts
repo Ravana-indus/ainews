@@ -16,6 +16,8 @@ export type SourceCoverage = {
   reason: string;
   url: string;
   publishedAt: string;
+  sourceName?: string;
+  sourceLogo?: string | null;
 };
 
 export type EventItem = {
