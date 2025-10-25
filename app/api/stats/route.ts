@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
 
+type PipelineRun = {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  error_message: string | null;
+};
+
 export async function GET() {
   const now = new Date();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -15,7 +23,7 @@ export async function GET() {
   const avgConfidence = 75; // Default confidence
 
   // Get pipeline runs if table exists (optional)
-  let runs = [];
+  let runs: PipelineRun[] = [];
   try {
     const { data: runsRes } = await supabase
       .from('pipeline_runs')
