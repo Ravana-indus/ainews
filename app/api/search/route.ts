@@ -1,47 +1,80 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
+import { extractSummary, getSourceNameFromUrl } from '@/lib/utils';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get('q') || '').trim();
-  const lang = (searchParams.get('lang') || 'en') as 'en'|'si'|'ta';
-  let eventsQuery = supabase
-    .from('events')
-    .select('id, canonical_title, category, last_updated_at, importance_score')
-    .order('last_updated_at', { ascending: false })
+
+  let storiesQuery = supabase
+    .from('stories')
+    .select('*')
+    .order('published_at', { ascending: false })
     .limit(50);
+
   if (q) {
-    // trigram-based fuzzy search on canonical_title
-    eventsQuery = eventsQuery.textSearch('canonical_title', q, { type: 'websearch' });
+    // text search on title and detailed_content
+    storiesQuery = storiesQuery.textSearch('title', q, { type: 'websearch' });
   }
-  const { data: evts, error } = await eventsQuery;
+
+  const { data: stories, error } = await storiesQuery;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const ids = (evts || []).map((e) => e.id);
-  const { data: sums } = await supabase
-    .from('summaries')
-    .select('event_id, lang, neutral_summary, neutral_detail, confidence')
-    .in('event_id', ids);
+  const result = (stories || []).map((story: any) => {
+    // Parse bias_analysis if available
+    let biasSummary: any[] = [];
+    let sources: any[] = [];
 
-  const byEvent: Record<string, any[]> = {};
-  (sums || []).forEach((s) => {
-    byEvent[s.event_id] = byEvent[s.event_id] || [];
-    byEvent[s.event_id].push(s);
-  });
+    if (story.bias_analysis) {
+      try {
+        // Parse bias_analysis (currently unused, reserved for future enhancement)
+        typeof story.bias_analysis === 'string'
+          ? JSON.parse(story.bias_analysis)
+          : story.bias_analysis;
 
-  const result = (evts || []).map((e) => {
-    const list = byEvent[e.id] || [];
-    const get = (lc: 'en'|'si'|'ta') => (list.find((x) => x.lang === lc) || { neutral_summary: '', neutral_detail: '', confidence: 0 }) as { neutral_summary: string; neutral_detail: string; confidence: number };
+        biasSummary = [{
+          sourceId: 'bias_analysis',
+          score: 0,
+          label: 'Neutral 0'
+        }];
+      } catch (e) {
+        console.error('Error parsing bias_analysis:', e);
+      }
+    }
+
+    // Create source info from source_url
+    if (story.source_url) {
+      const urls = story.source_url.split(',').map((url: string) => url.trim());
+      sources = urls.map((url: string, index: number) => ({
+        sourceId: `source_${index}`,
+        sourceName: getSourceNameFromUrl(url),
+        sourceLogo: null,
+        headline: story.title || 'No title',
+        lean: 0,
+        reason: 'Source coverage',
+        url: url.trim(),
+        publishedAt: story.published_at,
+      }));
+    }
+
     return {
-      id: e.id,
-      title: e.canonical_title,
-      summary: { en: get('en').neutral_summary || '', si: get('si').neutral_summary || '', ta: get('ta').neutral_summary || '' },
-      detail: { en: get('en').neutral_detail || '', si: get('si').neutral_detail || '', ta: get('ta').neutral_detail || '' },
-      updatedAt: e.last_updated_at,
-      confidence: Math.round(get(lang).confidence || e.importance_score || 0),
-      category: e.category,
-      sources: [],
-      biasSummary: [],
+      id: story.id,
+      title: story.title || 'Untitled Story',
+      summary: {
+        en: extractSummary(story.detailed_content || ''),
+        si: extractSummary(story.detailed_content || ''),
+        ta: extractSummary(story.detailed_content || '')
+      },
+      detail: {
+        en: story.detailed_content || '',
+        si: story.detailed_content || '',
+        ta: story.detailed_content || ''
+      },
+      updatedAt: story.published_at,
+      confidence: 75,
+      category: story.category || 'General',
+      sources: sources.slice(0, 4),
+      biasSummary: biasSummary,
     };
   });
 

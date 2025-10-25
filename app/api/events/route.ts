@@ -1,68 +1,71 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
+import { extractSummary, getSourceNameFromUrl } from '@/lib/utils';
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const lang = (searchParams.get('lang') || 'en') as 'en'|'si'|'ta';
-  const { data: evts, error } = await supabase
-    .from('events')
-    .select('id, canonical_title, category, last_updated_at, importance_score')
-    .order('last_updated_at', { ascending: false })
+export async function GET() {
+  const { data: stories, error } = await supabase
+    .from('stories')
+    .select('*')
+    .order('published_at', { ascending: false })
     .limit(50);
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const ids = (evts || []).map((e) => e.id);
-  const { data: sums } = await supabase
-    .from('summaries')
-    .select('event_id, lang, neutral_summary, neutral_detail, confidence')
-    .in('event_id', ids);
+  const result = (stories || []).map((story: any) => {
+    // Parse bias_analysis if available
+    let biasSummary: any[] = [];
+    let sources: any[] = [];
 
-  const byEvent: Record<string, any[]> = {};
-  (sums || []).forEach((s) => {
-    byEvent[s.event_id] = byEvent[s.event_id] || [];
-    byEvent[s.event_id].push(s);
-  });
+    if (story.bias_analysis) {
+      try {
+        // Parse bias_analysis (currently unused, reserved for future enhancement)
+        typeof story.bias_analysis === 'string'
+          ? JSON.parse(story.bias_analysis)
+          : story.bias_analysis;
 
-  // Also include limited source coverage and bias summary
-  const [{ data: cov }, { data: srcs }] = await Promise.all([
-    supabase.from('event_source_coverage').select('event_id, source_id, headline, lean, reason, url, published_at').in('event_id', ids),
-    supabase.from('sources').select('id, name, logo_url'),
-  ]);
-  const srcMap: Record<string, { name: string; logo_url: string | null }> = {};
-  (srcs || []).forEach((s: any) => { srcMap[s.id] = { name: s.name, logo_url: s.logo_url || null }; });
-  const covByEvent: Record<string, any[]> = {};
-  (cov || []).forEach((c: any) => {
-    covByEvent[c.event_id] = covByEvent[c.event_id] || [];
-    covByEvent[c.event_id].push({
-      sourceId: c.source_id,
-      sourceName: srcMap[c.source_id]?.name,
-      sourceLogo: srcMap[c.source_id]?.logo_url,
-      headline: c.headline,
-      lean: c.lean,
-      reason: c.reason,
-      url: c.url,
-      publishedAt: c.published_at,
-    });
-  });
+        biasSummary = [{
+          sourceId: 'bias_analysis',
+          score: 0,
+          label: 'Neutral 0'
+        }];
+      } catch (e) {
+        console.error('Error parsing bias_analysis:', e);
+      }
+    }
 
-  const result = (evts || []).map((e) => {
-    const list = byEvent[e.id] || [];
-    const get = (lc: 'en'|'si'|'ta') => (list.find((x) => x.lang === lc) || { neutral_summary: '', neutral_detail: '', confidence: 0 }) as { neutral_summary: string; neutral_detail: string; confidence: number };
-    const covList = (covByEvent[e.id] || []).slice(0, 4);
+    // Create source info from source_url
+    if (story.source_url) {
+      const urls = story.source_url.split(',').map((url: string) => url.trim());
+      sources = urls.map((url: string, index: number) => ({
+        sourceId: `source_${index}`,
+        sourceName: getSourceNameFromUrl(url),
+        sourceLogo: null,
+        headline: story.title || 'No title',
+        lean: 0,
+        reason: 'Source coverage',
+        url: url.trim(),
+        publishedAt: story.published_at,
+      }));
+    }
+
     return {
-      id: e.id,
-      title: e.canonical_title,
-      summary: { en: get('en').neutral_summary || '', si: get('si').neutral_summary || '', ta: get('ta').neutral_summary || '' },
-      detail: { en: get('en').neutral_detail || '', si: get('si').neutral_detail || '', ta: get('ta').neutral_detail || '' },
-      updatedAt: e.last_updated_at,
-      confidence: Math.round(get(lang).confidence || e.importance_score || 0),
-      category: e.category,
-      sources: covList,
-      biasSummary: covList.map((c: any) => ({
-        sourceId: c.sourceId,
-        score: c.lean as -2 | -1 | 0 | 1 | 2,
-        label: c.lean === 0 ? 'Neutral 0' : c.lean > 0 ? `Favorable +${c.lean}` : `Critical ${c.lean}`,
-      })),
+      id: story.id,
+      title: story.title || 'Untitled Story',
+      summary: {
+        en: extractSummary(story.detailed_content || ''),
+        si: extractSummary(story.detailed_content || ''),
+        ta: extractSummary(story.detailed_content || '')
+      },
+      detail: {
+        en: story.detailed_content || '',
+        si: story.detailed_content || '',
+        ta: story.detailed_content || ''
+      },
+      updatedAt: story.published_at,
+      confidence: 75,
+      category: story.category || 'General',
+      sources: sources.slice(0, 4),
+      biasSummary: biasSummary,
     };
   });
 

@@ -1,34 +1,71 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
+import { extractSummary, getSourceNameFromUrl } from '@/lib/utils';
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
-  const { searchParams } = new URL(req.url);
-  const lang = (searchParams.get('lang') || 'en') as 'en'|'si'|'ta';
-  const { data: e, error } = await supabase
-    .from('events')
-    .select('id, canonical_title, category, last_updated_at, importance_score')
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('*')
     .eq('id', params.id)
     .maybeSingle();
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!e) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!story) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { data: sums } = await supabase
-    .from('summaries')
-    .select('event_id, lang, neutral_summary, neutral_detail, confidence')
-    .eq('event_id', params.id);
+  // Parse bias_analysis if available
+  let biasSummary: any[] = [];
+  let sources: any[] = [];
 
-  const get = (lc: 'en'|'si'|'ta') => ((sums || []).find((x: any) => x.lang === lc) || { neutral_summary: '', neutral_detail: '', confidence: 0 }) as { neutral_summary: string; neutral_detail: string; confidence: number };
+  if (story.bias_analysis) {
+    try {
+      // Parse bias_analysis (currently unused, reserved for future enhancement)
+      typeof story.bias_analysis === 'string'
+        ? JSON.parse(story.bias_analysis)
+        : story.bias_analysis;
+
+      biasSummary = [{
+        sourceId: 'bias_analysis',
+        score: 0,
+        label: 'Neutral 0'
+      }];
+    } catch (e) {
+      console.error('Error parsing bias_analysis:', e);
+    }
+  }
+
+  // Create source info from source_url
+  if (story.source_url) {
+    const urls = story.source_url.split(',').map((url: string) => url.trim());
+    sources = urls.map((url: string, index: number) => ({
+      sourceId: `source_${index}`,
+      sourceName: getSourceNameFromUrl(url),
+      sourceLogo: null,
+      headline: story.title || 'No title',
+      lean: 0,
+      reason: 'Source coverage',
+      url: url.trim(),
+      publishedAt: story.published_at,
+    }));
+  }
 
   const result = {
-    id: e.id,
-    title: e.canonical_title,
-    summary: { en: get('en').neutral_summary || '', si: get('si').neutral_summary || '', ta: get('ta').neutral_summary || '' },
-    detail: { en: get('en').neutral_detail || '', si: get('si').neutral_detail || '', ta: get('ta').neutral_detail || '' },
-    updatedAt: e.last_updated_at,
-    confidence: Math.round(get(lang).confidence || e.importance_score || 0),
-    category: e.category,
-    sources: [],
-    biasSummary: [],
+    id: story.id,
+    title: story.title || 'Untitled Story',
+    summary: {
+      en: extractSummary(story.detailed_content || ''),
+      si: extractSummary(story.detailed_content || ''),
+      ta: extractSummary(story.detailed_content || '')
+    },
+    detail: {
+      en: story.detailed_content || '',
+      si: story.detailed_content || '',
+      ta: story.detailed_content || ''
+    },
+    updatedAt: story.published_at,
+    confidence: 75,
+    category: story.category || 'General',
+    sources,
+    biasSummary,
   };
 
   return NextResponse.json(result);
